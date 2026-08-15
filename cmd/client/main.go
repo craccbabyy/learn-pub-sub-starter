@@ -21,29 +21,45 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Peril Client Connected to RabbitMQ Server")
 
+	// need to create a channel on the new connection
+	newChan, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("unable to create amqp channel needed: %s", err)
+	}
+
 	userName, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("Unable to login as user: %v", err)
 	}
 
-	_, queue, err := pubsub.DeclareAndBind(
+	queueName := routing.PauseKey + "." + userName
+	gameState := gamelogic.NewGameState(userName)
+	// sub to the main queue
+	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
-		routing.PauseKey+"."+userName,
+		queueName,
 		routing.PauseKey,
 		pubsub.Transient,
+		handlerPause(gameState),
 	)
 	if err != nil {
 		log.Fatalf("can not subscribe to 'pause' %v", err)
 	}
 
-	fmt.Printf("Queue %v declared and bound\n", queue.Name)
-
-	// create new game state
-	gameState := gamelogic.NewGameState(userName)
+	// each game client need to subscribe to other player's moves before the REPL starts
+	movesKey := "army_moves.*"
+	movesQueue := routing.ArmyMovesPrefix + "." + userName
+	movesExchange := "peril_topic" // these vals should be moved to .env
+	err = pubsub.SubscribeJSON(conn, movesExchange, movesQueue, movesKey, pubsub.Transient, func(move gamelogic.ArmyMove) {
+		_ = gameState.HandleMove(move)
+		fmt.Print("> ")
+	})
+	if err != nil {
+		log.Fatalf("can not subscribe to the 'moves' exchange: %v", err)
+	}
 
 	// REPL
-
 	for {
 		userInput := gamelogic.GetInput()
 		if len(userInput) == 0 {
@@ -57,12 +73,17 @@ func main() {
 				continue
 			}
 		case "move":
-
-			_, err = gameState.CommandMove(userInput)
+			mover, err := gameState.CommandMove(userInput)
 			if err != nil {
 				fmt.Println(err)
 				continue
+			} // publish the move to peril_topic exchange with routing key set to 'army_moves.username'
+			userMoveKey := routing.ArmyMovesPrefix + "." + userName
+			err = pubsub.PublishJSON(newChan, movesExchange, userMoveKey, mover)
+			if err != nil {
+				fmt.Println(err)
 			}
+			fmt.Printf("%v move: %v successfully published\n", userName, mover)
 		case "status":
 			gameState.CommandStatus()
 		case "help":
