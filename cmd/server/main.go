@@ -29,6 +29,15 @@ func main() {
 		log.Fatalf("can not create channel: %v", err)
 	}
 
+	// need to declare and bind a queue to "peril_topic" exchange
+	routingKey := "game_logs.*"
+
+	_, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routingKey, pubsub.Durable)
+
+	if err != nil {
+		log.Fatalf("unable to bind to exchange/topic: %v", err)
+	}
+
 	// show commands the REPL user can use
 	gamelogic.PrintServerHelp()
 loop:
