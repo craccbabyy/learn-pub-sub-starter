@@ -13,7 +13,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 
 	// make sure the given queue exists and is bound to exchange
@@ -29,7 +29,7 @@ func SubscribeJSON[T any](
 		false,
 		false,
 		false,
-		nil,
+		nil, // Args
 	)
 	if err != nil {
 		return err
@@ -50,15 +50,19 @@ func SubscribeJSON[T any](
 				fmt.Printf("can not unmarshal message body")
 				continue
 			}
-			// call the handler function with unmarshaled message
-			handler(msg)
-
-			// acknowledge message to remove from queue (it blocks) - delivery.Ack(false)
-			err = delivery.Ack(false)
-			if err != nil {
-				fmt.Printf("unable to acknowledge! this will block communication..")
-				continue
+			// update this section to switch handler functions
+			switch handler(msg) {
+			case Ack:
+				delivery.Ack(false)
+				fmt.Println("Acknowledge")
+			case NackRequeue:
+				delivery.Nack(false, true)
+				fmt.Println("Nack Requeue")
+			case NackDiscard:
+				delivery.Nack(false, false)
+				fmt.Println("Nack Discard")
 			}
+
 		}
 	}()
 	return nil

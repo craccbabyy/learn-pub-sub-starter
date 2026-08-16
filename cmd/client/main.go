@@ -21,8 +21,8 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Peril Client Connected to RabbitMQ Server")
 
-	// need to create a channel on the new connection
-	newChan, err := conn.Channel()
+	// need to create a channel for MOVEs
+	moveChan, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("unable to create amqp channel needed: %s", err)
 	}
@@ -46,17 +46,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("can not subscribe to 'pause' %v", err)
 	}
-
+	// MOVE queue and handling
 	// each game client need to subscribe to other player's moves before the REPL starts
 	movesKey := "army_moves.*"
 	movesQueue := routing.ArmyMovesPrefix + "." + userName
 	movesExchange := "peril_topic" // these vals should be moved to .env
-	err = pubsub.SubscribeJSON(conn, movesExchange, movesQueue, movesKey, pubsub.Transient, func(move gamelogic.ArmyMove) {
-		_ = gameState.HandleMove(move)
-		fmt.Print("> ")
-	})
+	err = pubsub.SubscribeJSON(
+		conn,
+		movesExchange,
+		movesQueue,
+		movesKey,
+		pubsub.Transient,
+		handlerMove(gameState, moveChan)) // pass the channel for war recognition
 	if err != nil {
 		log.Fatalf("can not subscribe to the 'moves' exchange: %v", err)
+	}
+
+	// WAR QUEUE/HANDLING
+	warKey := routing.WarRecognitionsPrefix + ".*"
+	err = pubsub.SubscribeJSON(
+		conn,
+		"peril_topic",
+		"war",
+		warKey,
+		pubsub.Durable,
+		handlerWarAck(gameState))
+	if err != nil {
+		log.Fatalf("unable to subscribe to war queue: %v", err)
 	}
 
 	// REPL
@@ -79,7 +95,7 @@ func main() {
 				continue
 			} // publish the move to peril_topic exchange with routing key set to 'army_moves.username'
 			userMoveKey := routing.ArmyMovesPrefix + "." + userName
-			err = pubsub.PublishJSON(newChan, movesExchange, userMoveKey, mover)
+			err = pubsub.PublishJSON(moveChan, movesExchange, userMoveKey, mover)
 			if err != nil {
 				fmt.Println(err)
 			}

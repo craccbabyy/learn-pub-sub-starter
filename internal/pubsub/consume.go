@@ -6,7 +6,13 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Ack int
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
+)
 
 type SimpleQueueType int
 
@@ -30,6 +36,8 @@ func DeclareAndBind(
 	}
 
 	// configure queue parameters
+	table := amqp.Table{}
+	table["x-dead-letter-exchange"] = "peril_dlx"
 
 	// declare queue
 	queue, err := ch.QueueDeclare(
@@ -38,7 +46,7 @@ func DeclareAndBind(
 		queueType != Durable, // if durable true, autoDelete must be false
 		queueType != Durable, // if durable true, exclusive must be false
 		false,                // noWait
-		nil,                  // args amqp.Table
+		table,                // args amqp.Table
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, err
