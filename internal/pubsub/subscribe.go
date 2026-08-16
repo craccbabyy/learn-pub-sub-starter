@@ -1,9 +1,12 @@
 package pubsub
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 
+	//"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -15,15 +18,51 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
 	handler func(T) AckType,
 ) error {
+	return subscribe(conn, exchange, queueName, key, queueType, handler, func(data []byte) (T, error) {
+		var target T
+		err := json.Unmarshal(data, &target)
+		return target, err
+	},
+	)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	return subscribe(conn, exchange, queueName, key, queueType, handler, func(data []byte) (T, error) {
+		buffer := bytes.NewBuffer(data)
+		decoder := gob.NewDecoder(buffer)
+		var target T
+		err := decoder.Decode(&target)
+		return target, err
+	},
+	)
+}
+
+// helper func to serve JSON and GOB subscriptions
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+	unmarshaller func([]byte) (T, error),
+) error {
 
 	// make sure the given queue exists and is bound to exchange
-	ch, _, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
-		return fmt.Errorf("Unable to Declare/Bind: %s", err)
+		return fmt.Errorf("Unable to Declare/Bind Queue: %s", err)
 	}
 
 	deliveries, err := ch.Consume(
-		queueName,
+		queue.Name,
 		"",
 		false,
 		false,
@@ -32,20 +71,14 @@ func SubscribeJSON[T any](
 		nil, // Args
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("Unable to consume messages: %v", err)
 	}
 
-	// define goroutine to range over channel of deliveries
-	unmarsh := func(data []byte) (T, error) {
-		var holder T
-		err := json.Unmarshal(data, &holder)
-		return holder, err
-	}
-
+	// goroutine
 	go func() {
 		for delivery := range deliveries {
 			// unmarshal the body of each message
-			msg, err := unmarsh(delivery.Body)
+			msg, err := unmarshaller(delivery.Body)
 			if err != nil {
 				fmt.Printf("can not unmarshal message body")
 				continue
@@ -54,16 +87,14 @@ func SubscribeJSON[T any](
 			switch handler(msg) {
 			case Ack:
 				delivery.Ack(false)
-				fmt.Println("Acknowledge")
 			case NackRequeue:
 				delivery.Nack(false, true)
-				fmt.Println("Nack Requeue")
 			case NackDiscard:
 				delivery.Nack(false, false)
-				fmt.Println("Nack Discard")
 			}
-
 		}
 	}()
 	return nil
 }
+
+////////////////////////////////////////////

@@ -38,6 +38,9 @@ func main() {
 		log.Fatalf("unable to bind to exchange/topic: %v", err)
 	}
 
+	// subscribe to the GAME_LOGS - CONSUME
+	pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLogs())
+
 	// show commands the REPL user can use
 	gamelogic.PrintServerHelp()
 loop:

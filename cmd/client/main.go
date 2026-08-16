@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -24,7 +25,12 @@ func main() {
 	// need to create a channel for MOVEs
 	moveChan, err := conn.Channel()
 	if err != nil {
-		log.Fatalf("unable to create amqp channel needed: %s", err)
+		log.Fatalf("unable to create amqp channel for MOVES: %s", err)
+	}
+	// and a channel for WAR
+	warChan, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("unable to create amqp channel for WAR: %s", err)
 	}
 
 	userName, err := gamelogic.ClientWelcome()
@@ -70,7 +76,7 @@ func main() {
 		"war",
 		warKey,
 		pubsub.Durable,
-		handlerWarAck(gameState))
+		handlerWar(gameState, warChan))
 	if err != nil {
 		log.Fatalf("unable to subscribe to war queue: %v", err)
 	}
@@ -115,4 +121,16 @@ func main() {
 
 	}
 
+}
+
+// moved this here to easily access the user name
+func PublishGameLog(ch *amqp.Channel, username, msg string) error {
+	var gameLog = routing.GameLog{
+		CurrentTime: time.Now(),
+		Message:     msg,
+		Username:    username,
+	}
+	key := routing.GameLogSlug + "." + username
+	exch := routing.ExchangePerilTopic
+	return pubsub.PublishGob(ch, exch, key, gameLog)
 }
