@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -31,6 +32,11 @@ func main() {
 	warChan, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("unable to create amqp channel for WAR: %s", err)
+	}
+	// and one for LOGS!
+	logChan, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("unable to create amqp channel for LOGS: %s", err)
 	}
 
 	userName, err := gamelogic.ClientWelcome()
@@ -111,7 +117,33 @@ func main() {
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
-			fmt.Println("Spamming not allowed yet!")
+			if len(userInput) < 2 {
+				fmt.Printf("usage: %v <iterations>", userInput[0])
+				continue
+			}
+			n, err := strconv.Atoi(userInput[1])
+			if err != nil {
+				fmt.Printf("usage: %v <iterations>", userInput[0])
+			}
+			for i := 0; i < n; i++ {
+				mal := gamelogic.GetMaliciousLog()
+				spamKey := routing.GameLogSlug + "." + userName
+
+				// need a routing.GameLog struct to pass, NOT a string (can't GOB a string apparently)
+				logSpam := routing.GameLog{
+					CurrentTime: time.Now(),
+					Message:     mal,
+					Username:    userName,
+				}
+
+				err = pubsub.PublishGob(logChan, routing.ExchangePerilTopic, spamKey, logSpam)
+				if err != nil {
+					fmt.Printf("error publishing log: %v\n", err)
+					continue
+				}
+				fmt.Println("MALICIOUS LOG PUBLISHED")
+
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			return

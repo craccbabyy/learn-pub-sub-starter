@@ -11,11 +11,16 @@ import (
 func handlerLogs() func(gameLog routing.GameLog) pubsub.AckType {
 	return func(gameLog routing.GameLog) pubsub.AckType {
 		defer fmt.Println("> ")
+
+		//DEBUG PRINT
+		fmt.Println("about to WRITE log.....")
 		err := gamelogic.WriteLog(gameLog)
 		if err != nil {
 			fmt.Printf("unable to write log: %v\n", err)
 			return pubsub.NackRequeue
 		}
+		// DEBUG PRINT
+		fmt.Println("LOG was SUCCESSFULLY WRITTEN")
 
 		// DEBUG PRINT
 		fmt.Println("LOG WRITTEN SUCCESSFULLY!!")

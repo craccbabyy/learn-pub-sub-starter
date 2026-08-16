@@ -39,7 +39,10 @@ func main() {
 	}
 
 	// subscribe to the GAME_LOGS - CONSUME
-	pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLogs())
+	err = pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLogs())
+	if err != nil {
+		log.Fatalf("unable to subscribe to LOGS gob shite") // DEBUG PRINT
+	}
 
 	// show commands the REPL user can use
 	gamelogic.PrintServerHelp()

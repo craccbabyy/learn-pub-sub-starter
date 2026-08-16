@@ -77,12 +77,18 @@ func subscribe[T any](
 	// goroutine
 	go func() {
 		for delivery := range deliveries {
+
+			// DEBUG PRINT
+			fmt.Printf("body: %s", delivery.Body)
 			// unmarshal the body of each message
 			msg, err := unmarshaller(delivery.Body)
 			if err != nil {
-				fmt.Printf("can not unmarshal message body")
+				fmt.Printf("can not unmarshal message body: %v\n", err)
 				continue
 			}
+			/// DEBUG PRINT
+			fmt.Printf("routing key: %v - message %s\n", delivery.RoutingKey, delivery.Body)
+
 			// update this section to switch handler functions
 			switch handler(msg) {
 			case Ack:
