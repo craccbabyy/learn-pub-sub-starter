@@ -60,6 +60,11 @@ func subscribe[T any](
 	if err != nil {
 		return fmt.Errorf("Unable to Declare/Bind Queue: %s", err)
 	}
+	// SET PREFETCH LIMIT
+	err = ch.Qos(10, 0, false) // 0 = no limit
+	if err != nil {
+		return fmt.Errorf("can not set QOS prefetch limit: %s", err)
+	}
 
 	deliveries, err := ch.Consume(
 		queue.Name,
